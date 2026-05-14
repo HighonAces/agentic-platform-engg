@@ -1,0 +1,10 @@
+apiVersion: platform.example.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: team-2-data-bucket
+  namespace: team-2
+spec:
+  parameters:
+    location: US
+    storageClass: STANDARD
+    versioning: true
