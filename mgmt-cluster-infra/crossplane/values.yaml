@@ -1,0 +1,41 @@
+# crossplane/values.yaml
+# Helm values for Crossplane (crossplane-stable/crossplane)
+# Docs: https://docs.crossplane.io/latest/software/install/
+
+# Enable leader election for HA
+leaderElection: true
+
+# Resource limits for the Crossplane controller
+resourcesCrossplane:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Resource limits for the RBAC manager
+resourcesRBACManager:
+  limits:
+    cpu: 250m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+# Enable webhooks for validation
+webhooks:
+  enabled: true
+
+# Package cache (for storing provider packages)
+packageCache:
+  sizeLimit: 20Mi
+  pvc: ""              # leave empty to use emptyDir; set to PVC name for persistence
+
+# Metrics
+metrics:
+  enabled: true
+
+# Logging
+args:
+  - --debug=false

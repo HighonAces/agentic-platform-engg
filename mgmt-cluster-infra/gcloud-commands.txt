@@ -1,0 +1,99 @@
+################################################################################
+# GKE Management Cluster — gcloud CLI commands
+# Purpose : Create the management cluster that hosts Crossplane + ArgoCD
+# Prereqs : gcloud CLI installed, authenticated (gcloud auth login)
+################################################################################
+
+# ─── 0. Variables — EDIT THESE ───────────────────────────────────────────────
+export PROJECT_ID="<YOUR_GCP_PROJECT_ID>"
+export REGION="us-central1"
+export ZONE="us-central1-a"
+export CLUSTER_NAME="mgmt-cluster"
+export CLUSTER_VERSION="1.30"          # check: gcloud container get-server-config --region $REGION
+export MACHINE_TYPE="e2-standard-4"    # 4 vCPU, 16 GB — sufficient for Crossplane + ArgoCD
+export NUM_NODES="3"
+export NETWORK="default"
+export SUBNETWORK="default"
+export GSA_NAME="crossplane-sa"        # Google Service Account for Crossplane (Workload Identity)
+
+# ─── 1. Set default project & region ─────────────────────────────────────────
+gcloud config set project ${PROJECT_ID}
+gcloud config set compute/region ${REGION}
+gcloud config set compute/zone ${ZONE}
+
+# ─── 2. Enable required GCP APIs ─────────────────────────────────────────────
+gcloud services enable \
+  container.googleapis.com \
+  compute.googleapis.com \
+  iam.googleapis.com \
+  cloudresourcemanager.googleapis.com \
+  sqladmin.googleapis.com \
+  storage.googleapis.com \
+  artifactregistry.googleapis.com \
+  servicenetworking.googleapis.com \
+  dns.googleapis.com \
+  --project=${PROJECT_ID}
+
+# ─── 3. Create the GKE Standard cluster ──────────────────────────────────────
+# Using a regional cluster (3 nodes) for HA. Adjust --num-nodes as needed.
+gcloud container clusters create ${CLUSTER_NAME} \
+  --project=${PROJECT_ID} \
+  --region=${REGION} \
+  --cluster-version=${CLUSTER_VERSION} \
+  --machine-type=${MACHINE_TYPE} \
+  --num-nodes=${NUM_NODES} \
+  --network=${NETWORK} \
+  --subnetwork=${SUBNETWORK} \
+  --workload-pool=${PROJECT_ID}.svc.id.goog \
+  --enable-ip-alias \
+  --enable-autoscaling \
+  --min-nodes=2 \
+  --max-nodes=6 \
+  --enable-autorepair \
+  --enable-autoupgrade \
+  --logging=SYSTEM,WORKLOAD \
+  --monitoring=SYSTEM \
+  --release-channel=regular \
+  --addons=HorizontalPodAutoscaling,HttpLoadBalancing,GcePersistentDiskCsiDriver
+
+# ─── 4. Configure kubectl context ────────────────────────────────────────────
+gcloud container clusters get-credentials ${CLUSTER_NAME} \
+  --region=${REGION} \
+  --project=${PROJECT_ID}
+
+kubectl config current-context    # verify
+
+# ─── 5. Create Google Service Account for Crossplane (Workload Identity) ─────
+# Crossplane will use this GSA to provision GCP resources.
+
+# Create the GSA
+gcloud iam service-accounts create ${GSA_NAME} \
+  --project=${PROJECT_ID} \
+  --display-name="Crossplane GCP Provider SA"
+
+# Grant broad permissions (narrow down per provider in production)
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/editor"
+
+# Allow the Crossplane Kubernetes SA to impersonate the GSA (Workload Identity)
+# KSA = crossplane-system/provider-gcp  (default KSA name for the GCP provider pod)
+gcloud iam service-accounts add-iam-policy-binding \
+  ${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com \
+  --project=${PROJECT_ID} \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[crossplane-system/provider-gcp]"
+
+# ─── 6. (Optional) Create a static IP for ArgoCD UI ─────────────────────────
+gcloud compute addresses create argocd-static-ip \
+  --project=${PROJECT_ID} \
+  --region=${REGION} \
+  --network-tier=PREMIUM
+
+gcloud compute addresses describe argocd-static-ip \
+  --project=${PROJECT_ID} \
+  --region=${REGION} \
+  --format="value(address)"
+
+# ─── 7. Verify cluster nodes are Ready ───────────────────────────────────────
+kubectl get nodes -o wide

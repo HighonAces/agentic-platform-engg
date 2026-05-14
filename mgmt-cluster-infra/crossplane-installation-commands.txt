@@ -1,0 +1,74 @@
+################################################################################
+# Crossplane Installation — Full Bootstrap Commands
+# Installs Crossplane + GCP Provider + ProviderConfig (Workload Identity)
+# Run AFTER: gcloud-commands.txt (cluster must exist and kubectl context set)
+################################################################################
+
+# ─── Variables (inherit from gcloud-commands.txt) ────────────────────────────
+export PROJECT_ID="<YOUR_GCP_PROJECT_ID>"
+export GSA_NAME="crossplane-sa"
+export CROSSPLANE_VERSION="1.17.2"           # https://github.com/crossplane/crossplane/releases
+export PROVIDER_GCP_VERSION="v1.8.0"         # https://github.com/crossplane-contrib/provider-gcp/releases
+
+# ─── 1. Add Crossplane Helm repo ─────────────────────────────────────────────
+helm repo add crossplane-stable https://charts.crossplane.io/stable
+helm repo update
+
+# ─── 2. Install Crossplane ───────────────────────────────────────────────────
+kubectl create namespace crossplane-system --dry-run=client -o yaml | kubectl apply -f -
+
+helm install crossplane crossplane-stable/crossplane \
+  --namespace crossplane-system \
+  --version ${CROSSPLANE_VERSION} \
+  --values crossplane/values.yaml \
+  --wait
+
+# Verify installation
+kubectl get pods -n crossplane-system
+kubectl get crds | grep crossplane.io | head -20
+
+# ─── 3. Install the GCP Provider ─────────────────────────────────────────────
+# This installs the provider-gcp controller that knows how to talk to GCP APIs.
+kubectl apply -f crossplane/provider-gcp.yaml
+
+# Wait for provider to become healthy (may take 1-2 min to pull image)
+kubectl wait provider.pkg.crossplane.io/provider-gcp \
+  --for=condition=Healthy \
+  --timeout=300s
+
+# Verify provider pods are running
+kubectl get pods -n crossplane-system -l pkg.crossplane.io/revision
+
+# ─── 4. Annotate the Provider's Kubernetes Service Account for Workload Identity
+# The provider-gcp pod runs as a KSA. We need to annotate it so GKE binds it
+# to the GSA created in gcloud-commands.txt.
+
+# Get the exact KSA name (may vary by provider version)
+kubectl get serviceaccounts -n crossplane-system | grep provider
+
+# Annotate the KSA (replace <provider-gcp-sa-name> with actual KSA name)
+kubectl annotate serviceaccount \
+  -n crossplane-system \
+  <provider-gcp-sa-name> \
+  iam.gke.io/gcp-service-account=${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com
+
+# ─── 5. Create ProviderConfig (Workload Identity) ────────────────────────────
+# This tells Crossplane's GCP provider to authenticate using Workload Identity.
+kubectl apply -f crossplane/provider-config.yaml
+
+# Verify
+kubectl get providerconfig
+kubectl describe providerconfig default
+
+# ─── 6. Install XRDs and Compositions (for base infrastructure) ──────────────
+# XRDs define the API surface; Compositions define HOW resources are created.
+kubectl apply -f crossplane/xrd/
+kubectl apply -f crossplane/compositions/
+
+kubectl get xrd
+kubectl get composition
+
+# ─── 7. Verify Crossplane health ─────────────────────────────────────────────
+kubectl get providers
+kubectl get crds | grep upbound.io
+echo "✅ Crossplane installation complete"

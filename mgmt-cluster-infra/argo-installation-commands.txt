@@ -1,0 +1,87 @@
+################################################################################
+# ArgoCD Installation — Full Bootstrap Commands
+# Installs ArgoCD + bootstraps the App-of-Apps pattern
+# Run AFTER: gcloud-commands.txt and crossplane-installation-commands.txt
+################################################################################
+
+# ─── Variables ────────────────────────────────────────────────────────────────
+export ARGOCD_VERSION="7.7.11"          # Helm chart version (check: helm search repo argo/argo-cd)
+export GITHUB_REPO_URL="https://github.com/<YOUR_ORG>/<YOUR_REPO>"
+export GITHUB_TOKEN="<YOUR_GITHUB_PAT>"  # Personal Access Token with repo read access
+export ARGOCD_NAMESPACE="argocd"
+
+# ─── 1. Add Argo Helm repo ───────────────────────────────────────────────────
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+
+# ─── 2. Create ArgoCD namespace ──────────────────────────────────────────────
+kubectl create namespace ${ARGOCD_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
+# ─── 3. Install ArgoCD via Helm ──────────────────────────────────────────────
+helm install argocd argo/argo-cd \
+  --namespace ${ARGOCD_NAMESPACE} \
+  --version ${ARGOCD_VERSION} \
+  --values argocd/values.yaml \
+  --wait
+
+# Verify all pods are running
+kubectl get pods -n ${ARGOCD_NAMESPACE}
+
+# ─── 4. Get the initial admin password ───────────────────────────────────────
+# NOTE: Change this password immediately after first login.
+kubectl get secret argocd-initial-admin-secret \
+  -n ${ARGOCD_NAMESPACE} \
+  -o jsonpath="{.data.password}" | base64 --decode && echo
+
+# ─── 5. Port-forward ArgoCD UI (for local access) ────────────────────────────
+# Run in a separate terminal session:
+# kubectl port-forward svc/argocd-server -n argocd 8080:443
+# Then access: https://localhost:8080  (user: admin, pw: from step 4)
+
+# ─── 6. Login via ArgoCD CLI ─────────────────────────────────────────────────
+# Install CLI (macOS):
+brew install argocd
+
+# Login (with port-forward active):
+argocd login localhost:8080 \
+  --username admin \
+  --password $(kubectl get secret argocd-initial-admin-secret \
+    -n ${ARGOCD_NAMESPACE} \
+    -o jsonpath="{.data.password}" | base64 --decode) \
+  --insecure
+
+# ─── 7. Add GitHub Repository ────────────────────────────────────────────────
+# Option A: Using ArgoCD CLI
+argocd repo add ${GITHUB_REPO_URL} \
+  --username git \
+  --password ${GITHUB_TOKEN} \
+  --name platform-gitops
+
+# Option B: Apply the repository secret directly (preferred for GitOps)
+# Edit argocd/repositories.yaml with your GitHub details first, then:
+kubectl apply -f argocd/repositories.yaml
+
+# Verify repo is connected (STATUS should be Successful)
+argocd repo list
+
+# ─── 8. Bootstrap the App-of-Apps ────────────────────────────────────────────
+# This deploys a root ArgoCD Application that manages all other Applications.
+kubectl apply -f argocd/app-of-apps.yaml
+
+# Watch sync status
+argocd app get app-of-apps
+argocd app sync app-of-apps   # manual sync on first deploy
+
+# ─── 9. Verify all Applications are synced ───────────────────────────────────
+argocd app list
+
+# ─── 10. (Optional) Expose ArgoCD via LoadBalancer ───────────────────────────
+# Patch the argocd-server service to LoadBalancer type:
+kubectl patch svc argocd-server \
+  -n ${ARGOCD_NAMESPACE} \
+  -p '{"spec": {"type": "LoadBalancer"}}'
+
+kubectl get svc argocd-server -n ${ARGOCD_NAMESPACE}
+# Wait for EXTERNAL-IP to be assigned, then access https://<EXTERNAL-IP>
+
+echo "✅ ArgoCD installation and bootstrap complete"

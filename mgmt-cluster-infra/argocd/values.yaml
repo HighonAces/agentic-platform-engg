@@ -1,0 +1,124 @@
+# argocd/values.yaml
+# Helm values for ArgoCD (argo/argo-cd)
+# Docs: https://artifacthub.io/packages/helm/argo/argo-cd
+
+global:
+  # Set to your ArgoCD domain if using ingress
+  # domain: argocd.example.com
+  logging:
+    format: json
+    level: info
+
+# ─── ArgoCD Server ───────────────────────────────────────────────────────────
+server:
+  replicas: 1    # increase to 2+ for HA
+  
+  # Disable TLS on the server (let ingress/LB handle it)
+  extraArgs:
+    - --insecure
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  service:
+    type: ClusterIP   # change to LoadBalancer if you want direct external access
+    port: 80
+    targetPort: 8080
+
+  # Ingress (uncomment and configure if using an ingress controller)
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   hosts:
+  #     - argocd.example.com
+  #   tls:
+  #     - secretName: argocd-tls
+  #       hosts:
+  #         - argocd.example.com
+
+# ─── Application Controller ──────────────────────────────────────────────────
+controller:
+  replicas: 1   # increase to 2+ with sharding for large deployments
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+# ─── Repo Server ─────────────────────────────────────────────────────────────
+repoServer:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+# ─── ApplicationSet Controller ───────────────────────────────────────────────
+applicationSet:
+  enabled: true
+  replicas: 1
+
+# ─── Redis ───────────────────────────────────────────────────────────────────
+redis:
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# ─── ArgoCD ConfigMap (argocd-cm) ────────────────────────────────────────────
+configs:
+  cm:
+    # Track resources by annotation (more reliable than label)
+    application.resourceTrackingMethod: annotation
+
+    # Health check for Crossplane resources
+    resource.customizations.health.apiextensions.crossplane.io_CompositeResourceClaim: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
+            end
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "Claim is ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for claim to be ready"
+      return hs
+
+  # Repository credentials template (add repos in repositories.yaml)
+  credentialTemplates: {}
+
+  # RBAC policy
+  rbac:
+    policy.default: role:readonly
+    policy.csv: |
+      p, role:admin, applications, *, */*, allow
+      p, role:admin, clusters, *, *, allow
+      p, role:admin, repositories, *, *, allow
+      g, admins, role:admin
+
+# ─── Notifications ───────────────────────────────────────────────────────────
+notifications:
+  enabled: false   # enable and configure for Slack/email alerts

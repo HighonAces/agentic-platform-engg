@@ -1,0 +1,19 @@
+# argocd/repositories.yaml
+# Kubernetes Secret that registers your GitHub repository with ArgoCD.
+# Apply to the argocd namespace BEFORE creating the app-of-apps.
+#
+# IMPORTANT: Replace placeholders before applying.
+# For production, use Sealed Secrets, External Secrets Operator, or Vault.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: platform-gitops-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/<YOUR_ORG>/<YOUR_REPO>
+  username: git
+  password: <YOUR_GITHUB_PAT>    # GitHub Personal Access Token (repo read scope)

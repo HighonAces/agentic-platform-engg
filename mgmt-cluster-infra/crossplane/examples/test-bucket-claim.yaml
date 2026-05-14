@@ -1,0 +1,18 @@
+# crossplane/examples/test-bucket-claim.yaml
+# Example BucketClaim — namespace-scoped, submitted in team-1.
+# Crossplane creates a cluster-scoped XBucket + GCS Bucket from this.
+#
+# Usage:
+#   kubectl create namespace team-1 --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl apply -f crossplane/examples/test-bucket-claim.yaml
+#   kubectl get bucketclaim -n team-1 -w
+apiVersion: platform.example.io/v1alpha1
+kind: BucketClaim
+metadata:
+  name: platform-test-bucket
+  namespace: team-1
+spec:
+  parameters:
+    location: US
+    storageClass: STANDARD
+    versioning: false

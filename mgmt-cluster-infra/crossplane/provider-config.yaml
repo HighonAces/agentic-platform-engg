@@ -1,0 +1,14 @@
+# crossplane/provider-config.yaml
+# ProviderConfig tells the GCP Provider HOW to authenticate with GCP.
+# Using Workload Identity (no secret needed — the GSA annotation does the work).
+# Apply AFTER the Provider is Healthy and the KSA annotation is set.
+apiVersion: gcp.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  # Use Workload Identity for authentication (recommended on GKE)
+  credentials:
+    source: InjectedIdentity
+  # Set your GCP Project ID here
+  projectID: gen-lang-client-0714624790

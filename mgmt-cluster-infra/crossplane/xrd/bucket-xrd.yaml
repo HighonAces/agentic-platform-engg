@@ -1,0 +1,59 @@
+# crossplane/xrd/bucket-xrd.yaml
+# CompositeResourceDefinition (XRD) v1 for a GCS Bucket.
+#
+# Namespace scoping via Claims (v1 pattern — the correct approach for cloud resources):
+#   - XRD + Composition:    cluster-scoped (always)
+#   - BucketClaim:          namespace-scoped → teams submit in their namespace (team-1)
+#   - XBucket (XR):         cluster-scoped (auto-created by Crossplane from the Claim)
+#   - Bucket (managed):     cluster-scoped GCP resource (provider CRD, always cluster-scoped)
+#
+# Why NOT v2 scope:Namespaced:
+#   Crossplane v2 requires composed resources to also be namespace-scoped.
+#   All GCP provider managed resources (Bucket, Cluster, etc.) are cluster-scoped CRDs.
+#   This makes v2 scope:Namespaced incompatible with any cloud provider managed resource.
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xbuckets.platform.example.io
+spec:
+  group: platform.example.io
+  names:
+    kind: XBucket
+    plural: xbuckets
+  claimNames:
+    kind: BucketClaim
+    plural: bucketclaims
+  defaultCompositionRef:
+    name: bucket-composition
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - parameters
+              properties:
+                parameters:
+                  type: object
+                  properties:
+                    location:
+                      type: string
+                      description: "GCS multi-region or region (e.g. US, EU, us-central1)"
+                      default: "US"
+                    storageClass:
+                      type: string
+                      description: "Storage class: STANDARD, NEARLINE, COLDLINE, ARCHIVE"
+                      enum: ["STANDARD", "NEARLINE", "COLDLINE", "ARCHIVE"]
+                      default: "STANDARD"
+                    versioning:
+                      type: boolean
+                      description: "Enable object versioning"
+                      default: false
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true

@@ -1,0 +1,61 @@
+# crossplane/provider-gcp.yaml
+# Installs the GCP provider stack for Crossplane v1.17.x.
+#
+# Using provider-gcp v1.8.0 (compatible with Crossplane 1.17.2).
+# Family provider is installed explicitly so Workload Identity annotation
+# can be applied via DeploymentRuntimeConfig.
+#
+# Auth flow:
+#   DeploymentRuntimeConfig → annotates provider KSA with GSA email
+#   GKE Workload Identity   → exchanges KSA token for GSA token
+#   GCP APIs                → authenticated as crossplane-sa GSA
+
+# ── Family Provider (handles GCP authentication for ALL sub-providers) ────────
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: upbound-provider-family-gcp
+spec:
+  package: xpkg.upbound.io/upbound/provider-family-gcp:v1.8.0
+  runtimeConfigRef:
+    name: provider-gcp-config
+
+---
+# ── Storage Provider (GCS Buckets) ───────────────────────────────────────────
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-storage
+spec:
+  package: xpkg.upbound.io/upbound/provider-gcp-storage:v1.8.0
+  runtimeConfigRef:
+    name: provider-gcp-config
+
+---
+# ── DeploymentRuntimeConfig — Workload Identity annotation ───────────────────
+# Annotates each provider's Kubernetes Service Account so GKE binds it
+# to the GCP Service Account (crossplane-sa) via Workload Identity.
+# Requires: ControllerConfig removed in Crossplane v1.14+ → use this instead.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: provider-gcp-config
+spec:
+  serviceAccountTemplate:
+    metadata:
+      annotations:
+        iam.gke.io/gcp-service-account: crossplane-sa@gen-lang-client-0714624790.iam.gserviceaccount.com
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+            - name: package-runtime
+              resources:
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+                requests:
+                  cpu: 50m
+                  memory: 128Mi

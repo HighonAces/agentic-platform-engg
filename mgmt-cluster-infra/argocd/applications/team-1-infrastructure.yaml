@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: team-1-infrastructure
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/HighonAces/agentic-platform-engg
+    targetRevision: main
+    # This is the folder ArgoCD will watch in your repository!
+    path: infrastructure/team-1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: team-1
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

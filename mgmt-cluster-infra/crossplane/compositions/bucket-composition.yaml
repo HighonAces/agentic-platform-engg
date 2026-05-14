@@ -1,0 +1,66 @@
+# crossplane/compositions/bucket-composition.yaml
+# Composition implementing the XBucket XRD using Pipeline mode + function-go-templating.
+#
+# Go template reference:
+#   .observed.composite.resource   → the XR object (full Kubernetes resource)
+#   .desired.composite.resource    → desired state of the XR (for status writes)
+#   .observed.resources            → map of already-created composed resources
+#
+# Each resource in the template output must have the annotation:
+#   gotemplating.fn.crossplane.io/composition-resource-name: <stable-name>
+# This is how Crossplane tracks composed resources across reconcile loops.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: bucket-composition
+  labels:
+    provider: gcp
+    service: gcs
+spec:
+  compositeTypeRef:
+    apiVersion: platform.example.io/v1alpha1
+    kind: XBucket
+
+  mode: Pipeline
+  pipeline:
+    - step: create-gcs-bucket
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- /*
+              Assign the composite resource (XR) and its parameters to variables.
+              In Go templates, := declares a new variable in the current scope.
+              The pipe character | chains a value through a template function.
+            */ -}}
+            {{- $xr     := .observed.composite.resource }}
+            {{- $params := $xr.spec.parameters }}
+            {{- $name   := $xr.metadata.name }}
+            ---
+            apiVersion: storage.gcp.upbound.io/v1beta2
+            kind: Bucket
+            metadata:
+              name: {{ $name }}
+              annotations:
+                # Required: gives this composed resource a stable identity across reconciles
+                gotemplating.fn.crossplane.io/composition-resource-name: gcs-bucket
+                # Sets the actual GCS bucket name (defaults to metadata.name otherwise)
+                crossplane.io/external-name: {{ $name }}
+            spec:
+              forProvider:
+                {{- /* index into nested fields using dot notation */}}
+                location: {{ $params.location }}
+                storageClass: {{ $params.storageClass }}
+                uniformBucketLevelAccess: true
+                versioning:
+                  {{- /* Go template if/else for boolean rendering */}}
+                  enabled: {{ if $params.versioning }}true{{ else }}false{{ end }}
+              providerConfigRef:
+                name: default
+    - step: automatically-detect-ready-composed-resources
+      functionRef:
+        name: function-auto-ready

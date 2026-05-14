@@ -1,0 +1,39 @@
+# crossplane/rbac/team-1-bucket-claim-rbac.yaml
+# Restricts XBucket creation to the team-1 namespace.
+#
+# In Crossplane v2 with scope: Namespaced, teams submit XBucket directly
+# (no separate Claim resource). RBAC grants access to xbuckets in team-1.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: xbucket-editor
+  namespace: team-1
+rules:
+  - apiGroups: ["platform.example.io"]
+    resources: ["xbuckets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: team-1-bucket-claim-editor
+  namespace: team-1
+subjects:
+  # Option A: bind to the default SA in team-1 (good for CI/CD pipelines)
+  - kind: ServiceAccount
+    name: default
+    namespace: team-1
+  # Option B: bind to a specific user (uncomment and edit)
+  # - kind: User
+  #   name: alice@example.com
+  #   apiGroup: rbac.authorization.k8s.io
+  # Option C: bind to a group (e.g. a GKE RBAC group)
+  # - kind: Group
+  #   name: team-1-developers
+  #   apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: bucket-claim-editor
+  apiGroup: rbac.authorization.k8s.io

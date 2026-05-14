@@ -1,0 +1,9 @@
+# crossplane/functions/function-kcl.yaml
+# Installs the KCL function for use in Pipeline-mode Compositions.
+# Ref: https://github.com/crossplane-contrib/function-kcl
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Function
+metadata:
+  name: function-kcl
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.9.4

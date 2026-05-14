@@ -1,0 +1,99 @@
+# crossplane-mcp/deploy.yaml
+# Deploys the MCP server in-cluster with SSE transport.
+# The pod mounts the default service account token, which must have read
+# access to crossplane CRDs (ClusterRole binding below).
+#
+# Usage:
+#   kubectl apply -f deploy.yaml
+#   # Then connect your ADK agent to http://<svc-ip>:8080/sse
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: crossplane-mcp
+  namespace: crossplane-system
+
+---
+# Read-only access to all CRDs and custom resources + events
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-mcp-reader
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crossplane-mcp-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crossplane-mcp-reader
+subjects:
+  - kind: ServiceAccount
+    name: crossplane-mcp
+    namespace: crossplane-system
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crossplane-mcp
+  namespace: crossplane-system
+  labels:
+    app: crossplane-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crossplane-mcp
+  template:
+    metadata:
+      labels:
+        app: crossplane-mcp
+    spec:
+      serviceAccountName: crossplane-mcp
+      containers:
+        - name: crossplane-mcp
+          # Replace with your built image
+          image: gcr.io/gen-lang-client-0714624790/crossplane-mcp:latest
+          imagePullPolicy: Always
+          env:
+            - name: MCP_TRANSPORT
+              value: "sse"
+            - name: MCP_ADDR
+              value: ":8080"
+          ports:
+            - containerPort: 8080
+              name: sse
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crossplane-mcp
+  namespace: crossplane-system
+spec:
+  selector:
+    app: crossplane-mcp
+  ports:
+    - name: sse
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
