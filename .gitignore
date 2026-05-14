@@ -1,0 +1,22 @@
+# Environments
+.env
+.env.local
+
+# Node
+node_modules/
+dist/
+build/
+
+# Go binaries
+argocd-mcp/argocd-mcp
+crossplane-mcp/crossplane-mcp
+github-mcp-server/github-mcp-server
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/settings.json
+.cursor/
+github-mcp-server/.dockerignore
+# Test comment
